@@ -34,10 +34,13 @@
 #include <dev/gpio_keypad.h>
 #include <lib/ptable.h>
 #include <dev/flash.h>
+#include <smem.h>
 
-#define BOARD_FLASH_OFFSET	378
+#define LINUX_MACHTYPE  3013
 
-#define LINUX_MACHTYPE  0x0000059F
+#define VARIABLE_LENGTH        0x10101010
+#define DIFF_START_ADDR        0xF0F0F0F0
+#define NUM_PAGES_PER_BLOCK    0x40
 
 static struct ptable flash_ptable;
 
@@ -108,16 +111,24 @@ unsigned smem_get_apps_flash_start(void);
 
 void keypad_init(void);
 
+int target_is_emmc_boot(void);
+
 void target_init(void)
 {
 	unsigned offset;
 	struct flash_info *flash_info;
+	unsigned total_num_of_blocks;
+	bool  start_addr_changed = false;
+	unsigned next_ptr_start_adr = 0;
 	int i;
 
 	dprintf(INFO, "target_init()\n");
 
 	keys_init();
 	keypad_init();
+
+	if (target_is_emmc_boot())
+		return;
 
 	ptable_init(&flash_ptable);
 	smem_ptable_init();
@@ -128,7 +139,9 @@ void target_init(void)
 
 	offset = smem_get_apps_flash_start();
 	if (offset == 0xffffffff)
-		offset = BOARD_FLASH_OFFSET;
+	        while(1);
+
+	total_num_of_blocks = (flash_info->block_size)/NUM_PAGES_PER_BLOCK;
 
 	for (i = 0; i < num_parts; i++) {
 		struct ptentry *ptn = &board_part_list[i];
@@ -140,6 +153,8 @@ void target_init(void)
 			   len, ptn->flags);
 	}
 
+	smem_add_modem_partitions(&flash_ptable);
+
 	ptable_dump(&flash_ptable);
 	flash_set_ptable(&flash_ptable);
 }
@@ -148,3 +163,29 @@ unsigned board_machtype(void)
 {
     return LINUX_MACHTYPE;
 }
+
+void reboot_device(unsigned reboot_reason)
+{
+    reboot(reboot_reason);
+}
+
+unsigned check_reboot_mode(void)
+{
+    unsigned mode[2] = {0, 0};
+    unsigned int mode_len = sizeof(mode);
+    unsigned smem_status;
+
+    smem_status = smem_read_alloc_entry(SMEM_APPS_BOOT_MODE,
+					&mode, mode_len );
+    if(smem_status)
+    {
+      dprintf(CRITICAL, "ERROR: unable to read shared memory for reboot mode\n");
+      return 0;
+    }
+    return mode[0];
+}
+
+void target_battery_charging_enable(unsigned enable, unsigned disconnect)
+{
+}
+

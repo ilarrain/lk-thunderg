@@ -30,7 +30,7 @@
 #include <debug.h>
 
 #define EBI1_SIZE1   	0x1D700000 //471MB for 512 RAM
-#define EBI1_ADDR1    	0x00200000
+#define EBI1_ADDR1    	0x20000000
 
 unsigned* target_atag_mem(unsigned* ptr)
 {
