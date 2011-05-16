@@ -1,0 +1,66 @@
+%s uart_console=%s lge.rev=%s lge.hreset=%s lge.reboot=%s lge.lcd=%s
+%s no_console_suspend
+rev_a
+rev_b
+rev_c
+rev_d
+rev_e
+rev_f
+rev_10
+rev_11
+enable
+disable
+reboot
+pwroff
+
+r0  0x%08x r1  0x%08x r2  0x%08x r3  0x%08x
+r4  0x%08x r5  0x%08x r6  0x%08x r7  0x%08x
+r8  0x%08x r9  0x%08x r10 0x%08x r11 0x%08x
+r12 0x%08x usp 0x%08x ulr 0x%08x pc  0x%08x
+spsr 0x%08x
+%c%s r13 0x%08x r14 0x%08x
+
+mem=100M console=null
+
+entering hidden reset mode : phys addr %x
+ERROR: Could not do normal boot. Reverting to fastboot mode.
+Diplay initialized @ Fastboot
+erase:
+flash:
+continue
+reboot-bootloader
+product
+swordfish
+kernel
+Fastboot mode started
+aboot
+Google
+Android
+ androidboot.emmc=true
+ androidboot.battchg_pause=true
+
+0x%08lx: 
+0x%02hhx 
+%08x %08x %08x %08x |
+
+ptable
+Apps
+Modem
+boot
+system
+recovery
+lgdrm
+splash
+FOTABIN
+FOTA
+misc
+cache
+userdata
+AMSS
+boot
+FOTA
+FOTABIN
+
+~ # cat /proc/cmdline 
+mem=471M console=ttyMSM2,115200n8 androidboot.hardware=thunderg uart_console=disable lge.rev=rev_11 lge.hreset=off lge.reboot=pwroff lge.lcd=on
+
