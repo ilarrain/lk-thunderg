@@ -328,7 +328,7 @@ int boot_linux_from_mmc(void)
 	}
 
 	if (memcmp(hdr->magic, BOOT_MAGIC, BOOT_MAGIC_SIZE)) {
-		dprintf(CRITICAL, "ERROR: Invaled boot image header\n");
+		dprintf(CRITICAL, "ERROR: Invalid boot image header\n");
                 return -1;
 	}
 
@@ -424,12 +424,12 @@ int boot_linux_from_flash(void)
 	offset += page_size;
 
 	if (memcmp(hdr->magic, BOOT_MAGIC, BOOT_MAGIC_SIZE)) {
-		dprintf(CRITICAL, "ERROR: Invaled boot image heador\n");
+		dprintf(CRITICAL, "ERROR: Invalid boot image header\n");
 		return -1;
 	}
 
 	if (hdr->page_size != page_size) {
-		dprintf(CRITICAL, "ERROR: Invaled boot image pagesize. Device pagesize: %d, Image pagesize: %d\n",page_size,hdr->page_size);
+		dprintf(CRITICAL, "ERROR: Invalid boot image pagesize. Device pagesize: %d, Image pagesize: %d\n",page_size,hdr->page_size);
 		return -1;
 	}
 
@@ -598,7 +598,7 @@ void cmd_flash_mmc_sparse_img(const char *arg, void *data, unsigned sz)
 	sparse_header_t *sparse_header;
 	chunk_header_t *chunk_header;
 	uint32_t crc32 = 0;
-	uint32_t total_blocks = 0;
+	unsigned long long total_blocks = 0;
 	unsigned long long ptn = 0;
 	unsigned long long size = 0;
 
@@ -672,6 +672,9 @@ void cmd_flash_mmc_sparse_img(const char *arg, void *data, unsigned sz)
 			break;
 
 			case CHUNK_TYPE_DONT_CARE:
+			total_blocks += chunk_header->chunk_sz;
+			break;
+
 			case CHUNK_TYPE_CRC:
 			if(chunk_header->total_sz != sparse_header->chunk_hdr_sz)
 			{
@@ -682,6 +685,7 @@ void cmd_flash_mmc_sparse_img(const char *arg, void *data, unsigned sz)
 			data += chunk_data_sz;
 			break;
 
+			default:
 			fastboot_fail("Unknown chunk type");
 			return;
 		}
