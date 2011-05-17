@@ -150,7 +150,7 @@ void target_init(void)
 		if ((len == 0) && (i == num_parts - 1))
 			len = flash_info->num_blocks - offset - ptn->start;
 		ptable_add(&flash_ptable, ptn->name, offset + ptn->start,
-			   len, ptn->flags);
+			   len, ptn->flags, TYPE_APPS_PARTITION, PERM_WRITEABLE);
 	}
 
 	smem_add_modem_partitions(&flash_ptable);
