@@ -53,7 +53,7 @@
 
 #define EXPAND(NAME) #NAME
 #define TARGET(NAME) EXPAND(NAME)
-#define DEFAULT_CMDLINE "mem=100M console=null";
+#define DEFAULT_CMDLINE "mem=471M console=ttyMSM2,115200n8 androidboot.hardware=thunderg";
 
 #ifdef MEMBASE
 #define EMMC_BOOT_IMG_HEADER_ADDR (0xFF000+(MEMBASE))
@@ -72,6 +72,8 @@ static const char *baseband_apq     = " androidboot.baseband=apq";
 static const char *baseband_msm     = " androidboot.baseband=msm";
 static const char *baseband_csfb    = " androidboot.baseband=csfb";
 static const char *baseband_svlte2a = " androidboot.baseband=svlte2a";
+
+static const char *append_cmdline = " uart_console=disable lge.rev=rev_11 lge.hreset=off lge.reboot=pwroff lge.lcd=on";
 
 static struct udc_device surf_udc_device = {
 	.vendor_id	= 0x18d1,
@@ -173,6 +175,8 @@ void boot_linux(void *kernel, unsigned *tags,
 
 	cmdline_len += strlen(usb_sn_cmdline);
 	cmdline_len += strlen(sn_buf);
+	
+	cmdline_len += strlen(append_cmdline);
 
 	if (target_pause_for_battery_charge()) {
 		pause_at_bootup = 1;
@@ -260,6 +264,12 @@ void boot_linux(void *kernel, unsigned *tags,
 				while ((*dst++ = *src++));
 				break;
 		}
+
+		src = append_cmdline;
+		if (have_cmdline) --dst;
+		have_cmdline = 1;
+		while ((*dst++ = *src++));
+
 		ptr += (n / 4);
 	}
 
