@@ -47,7 +47,7 @@
 #include "bootimg.h"
 #include "fastboot.h"
 
-#define DEFAULT_CMDLINE "mem=100M console=null";
+#define DEFAULT_CMDLINE "mem=471M console=ttyMSM2,115200n8 androidboot.hardware=thunderg";
 
 #ifdef MEMBASE
 #define EMMC_BOOT_IMG_HEADER_ADDR (0xFF000+(MEMBASE))
@@ -59,6 +59,8 @@
 #define FASTBOOT_MODE   0x77665500
 
 static const char *emmc_cmdline = " androidboot.emmc=true";
+
+static const char *append_cmdline = " uart_console=disable lge.rev=rev_11 lge.hreset=off lge.reboot=pwroff lge.lcd=on";
 
 static struct udc_device surf_udc_device = {
 	.vendor_id	= 0x18d1,
@@ -150,6 +152,9 @@ void boot_linux(void *kernel, unsigned *tags,
 	if (target_is_emmc_boot()) {
 		cmdline_len += strlen(emmc_cmdline);
 	}
+	
+	cmdline_len += strlen(append_cmdline);
+	
 	if (cmdline_len > 0) {
 		const char *src;
 		char *dst;
@@ -168,6 +173,11 @@ void boot_linux(void *kernel, unsigned *tags,
 			if (have_cmdline) --dst;
 			while ((*dst++ = *src++));
 		}
+		
+		src = append_cmdline;
+		if (have_cmdline) --dst;
+		while ((*dst++ = *src++));
+		
 		ptr += (n / 4);
 	}
 
@@ -443,10 +453,12 @@ void aboot_init(const struct app_descriptor *app)
 	page_size = flash_page_size();
 	page_mask = page_size - 1;
 	if (keys_get_state(KEY_HOME) != 0)
-	        boot_into_recovery = 1;
+		boot_into_recovery = 1;
+	if (keys_get_state(KEY_VOLUMEUP) != 0)
+		boot_into_recovery = 1;
 	if (keys_get_state(KEY_BACK) != 0)
 		goto fastboot;
-	if (keys_get_state(KEY_CLEAR) != 0)
+	if (keys_get_state(KEY_VOLUMEDOWN) != 0)
 		goto fastboot;
 
 	reboot_mode = check_reboot_mode();
@@ -475,7 +487,7 @@ fastboot:
 	fastboot_register("continue", cmd_continue);
 	fastboot_register("reboot", cmd_reboot);
 	fastboot_register("reboot-bootloader", cmd_reboot_bootloader);
-	fastboot_publish("product", "swift");
+	fastboot_publish("product", "thunderg");
 	fastboot_publish("kernel", "lk");
 
 	fastboot_init(target_get_scratch_address(), 140 * 1024 * 1024);

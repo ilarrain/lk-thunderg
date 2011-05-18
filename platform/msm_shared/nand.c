@@ -141,6 +141,8 @@ static struct flash_identification supported_flash[] =
 	{0x5500bcec, 0xFFFFFFFF, (512<<20), 1, 2048, (2048<<6), 64, 0}, /*Sams*/
 	{0xd591bc98, 0xFFFFFFFF, (512<<20), 1, 2048, (2048<<6), 64, 0}, /*Tosh*/
 	{0x5590bc98, 0xFFFFFFFF, (512<<20), 1, 2048, (2048<<6), 64, 0}, /*Tosh*/
+	{0x5500bcec, 0xFF00FFFF, (512<<20), 1, 2048, (2048<<6), 64, 0}, /*Sams*/
+	{0x5510bcad, 0xFF00FFFF, (512<<20), 1, 2048, (2048<<6), 64, 0}, /*Hynx*/
 	/* Note: Width flag is 0 for 8 bit Flash and 1 for 16 bit flash	  */
 	/* Note: Onenand flag is 0 for NAND Flash and 1 for OneNAND flash	*/
 	/* Note: The First row will be filled at runtime during ONFI probe	*/

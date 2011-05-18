@@ -34,18 +34,15 @@
 
 #include <sys/types.h>
 
-#define KEY_VOLUMEUP	115
-#define KEY_VOLUMEDOWN	114
-
-#define KEY_SEND	231
-#define KEY_HOME	102
-
-#define KEY_SEARCH	217
-#define KEY_CAMERA	212
-#define KEY_FOCUS	242
+#define KEY_HOME		102
+#define KEY_VOLUMEDOWN		114
+#define KEY_VOLUMEUP		115
+#define KEY_MENU		139	/* Menu (show menu) */
+#define KEY_BACK		158	/* AC Back */
+#define KEY_SEARCH		217
 
 
-#define MAX_KEYS	250
+#define MAX_KEYS		250
 
 void keys_init(void);
 void keys_post_event(uint16_t code, int16_t value);
