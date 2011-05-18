@@ -186,7 +186,7 @@ void boot_linux(void *kernel, unsigned *tags,
 	arch_disable_mmu();
 
 	entry(0, machtype, tags);
-
+	dprintf(INFO, "tgs is: %x\n", tags);
 }
 
 unsigned page_size = 0;
@@ -230,7 +230,7 @@ int boot_linux_from_flash(void)
 		if (fb_display) {
 			if (flash_read(ptn, 0, fb_display->base,
 			    (fb_display->width * fb_display->height * fb_display->bpp/8))) {
-				fbcon_clear();
+				//fbcon_clear();
 				dprintf(CRITICAL, "ERROR: Cannot read splash image\n");
 			}
 		}
@@ -464,7 +464,7 @@ fastboot:
 	if(!disp_init) {
 		display_init();
 	} else {
-		fbcon_clear();
+		//fbcon_clear();
 	}
 	dprintf(INFO, "Diplay initialized\n");
 	udc_init(&surf_udc_device);
@@ -475,10 +475,10 @@ fastboot:
 	fastboot_register("continue", cmd_continue);
 	fastboot_register("reboot", cmd_reboot);
 	fastboot_register("reboot-bootloader", cmd_reboot_bootloader);
-	fastboot_publish("product", "swordfish");
+	fastboot_publish("product", "swift");
 	fastboot_publish("kernel", "lk");
 
-	fastboot_init(target_get_scratch_address(), 120 * 1024 * 1024);
+	fastboot_init(target_get_scratch_address(), 140 * 1024 * 1024);
 	udc_start();
         target_battery_charging_enable(1, 0);
 }

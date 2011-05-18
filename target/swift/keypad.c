@@ -1,6 +1,7 @@
 /*
  * Copyright (c) 2009, Google Inc.
  * All rights reserved.
+ * Copyright (c) 2009, Code Aurora Forum. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,26 +30,41 @@
  * SUCH DAMAGE.
  */
 
-#ifndef __DEV_KEYS_H
-#define __DEV_KEYS_H
+#include <dev/keys.h>
+#include <dev/gpio_keypad.h>
 
-#include <sys/types.h>
+#define ARRAY_SIZE(x) (sizeof(x)/sizeof((x)[0]))
 
-#define KEY_VOLUMEUP	115
-#define KEY_VOLUMEDOWN	114
+/* don't turn this on without updating the ffa support */
+#define SCAN_FUNCTION_KEYS 0
 
-#define KEY_SEND	231
-#define KEY_HOME	102
+static unsigned int halibut_col_gpios[] = { 34, 35, 36 };
+static unsigned int halibut_row_gpios[] = { 37, 38, 39 };
 
-#define KEY_SEARCH	217
-#define KEY_CAMERA	212
-#define KEY_FOCUS	242
+#define KEYMAP_INDEX(row, col) ((row)*ARRAY_SIZE(halibut_col_gpios) + (col))
 
+static const unsigned short halibut_keymap[ARRAY_SIZE(halibut_col_gpios) * ARRAY_SIZE(halibut_row_gpios)] = {
+	[KEYMAP_INDEX(0, 0)] = 115,//KEY_VOLUMEUP,
+	[KEYMAP_INDEX(0, 1)] = 114,//KEY_VOLUMEDOWN,
+	[KEYMAP_INDEX(1, 0)] = 242,//KEY_FOCUS,
+	[KEYMAP_INDEX(1, 1)] = 212,//KEY_CAMERA,
+	[KEYMAP_INDEX(1, 2)] = 217,//KEY_SEARCH,
+	[KEYMAP_INDEX(2, 0)] = 231,//KEY_SEND,
+	[KEYMAP_INDEX(2, 1)] = 102,//KEY_HOME,
+};
 
-#define MAX_KEYS	250
+static struct gpio_keypad_info halibut_keypad_info = {
+	.keymap		= halibut_keymap,
+	.output_gpios	= halibut_col_gpios,
+	.input_gpios	= halibut_row_gpios,
+	.noutputs	= ARRAY_SIZE(halibut_col_gpios),
+	.ninputs	= ARRAY_SIZE(halibut_row_gpios),
+	.settle_time	= 5 /* msec */,
+	.poll_time	= 20 /* msec */,
+	.flags		= GPIOKPF_DRIVE_INACTIVE,
+};
 
-void keys_init(void);
-void keys_post_event(uint16_t code, int16_t value);
-int keys_get_state(uint16_t code);
-
-#endif /* __DEV_KEYS_H */
+void keypad_init(void)
+{
+	gpio_keypad_init(&halibut_keypad_info);
+}
