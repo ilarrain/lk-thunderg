@@ -37,7 +37,7 @@
 #include <dev/flash.h>
 #include <smem.h>
 
-#define LINUX_MACHTYPE  3014
+#define LINUX_MACHTYPE  2627
 
 #define VARIABLE_LENGTH        0x10101010
 #define DIFF_START_ADDR        0xF0F0F0F0
@@ -55,64 +55,39 @@ static struct ptable flash_ptable;
  */
 static struct ptentry board_part_list[] = {
 	{
-		.start = 304,
-		.length = 34,
+		.start = 0,
+		.length = 40  /* 5MB */,
 		.name = "boot",
 	},
 	{
-		.start = 338,
-		.length = 1520,
+		.start = 40,
+		.length = 760 /* 95MB */,
 		.name = "system",
 	},
 	{
-		.start = 1858,
-		.length = 40,
-		.name = "recovery",
-	},
-	{
-		.start = 1898,
-		.length = 22,
-		.name = "lgdrm",
-	},
-	{
-		.start = 1920,
-		.length = 8,
-		.name = "splash",
-	},
-	{
-		.start = 1928,
-		.length = 12,
-		.name = "FOTABIN",
-	},
-	{
-		.start = 1940,
-		.length = 46,
-		.name = "FOTA",
-	},
-	{
-		.start = 1986,
-		.length = 2,
-		.name = "misc",
-	},
-	{
-		.start = 1988,
-		.length = 512,
+		.start = 800,
+		.length = 40 /* 5MB */,
 		.name = "cache",
 	},
 	{
-		.start = 2500,
-		.length = 1596,
+		.start = 840,
+		.length = VARIABLE_LENGTH,
 		.name = "userdata",
+	},
+	{
+		.start = DIFF_START_ADDR,
+		.length = 40 /* 5MB */,
+		.name = "recovery",
 	},
 };
 static int num_parts = sizeof(board_part_list)/sizeof(struct ptentry);
 
 void smem_ptable_init(void);
 unsigned smem_get_apps_flash_start(void);
-
+void usb_charger_change_state(void);
+void usb_charger_reset(void);
+void usb_stop_charging(unsigned);
 void keypad_init(void);
-
-int target_is_emmc_boot(void);
 
 void target_init(void)
 {
@@ -122,18 +97,13 @@ void target_init(void)
 	bool  start_addr_changed = false;
 	unsigned next_ptr_start_adr = 0;
 	int i;
-	
-	//display_init();
+
 	dprintf(INFO, "target_init()\n");
 
 #if (!ENABLE_NANDWRITE)
 	keys_init();
 	keypad_init();
 #endif
-
-	if (target_is_emmc_boot())
-		return;
-
 	ptable_init(&flash_ptable);
 	smem_ptable_init();
 
@@ -146,11 +116,7 @@ void target_init(void)
 	        while(1);
 
 	total_num_of_blocks = (flash_info->block_size)/NUM_PAGES_PER_BLOCK;
-	
-	//display_init();
-	
-	//dprintf(INFO, "offset = 0x%08x\n", offset);
-	
+
 	for (i = 0; i < num_parts; i++) {
 		struct ptentry *ptn = &board_part_list[i];
 		unsigned len = ptn->length;
@@ -159,7 +125,7 @@ void target_init(void)
 		{
 		        start_addr_changed = true;
 			unsigned length_for_prt = 0;
-			int j;
+			unsigned j;
 			for (j = i+1; j < num_parts; j++)
 			{
 			        struct ptentry *temp_ptn = &board_part_list[j];
@@ -167,7 +133,7 @@ void target_init(void)
 			        length_for_prt += temp_ptn->length;
 			}
 		        len = (total_num_of_blocks - 1) - (offset + ptn->start + length_for_prt);
-			//ASSERT(len >= 0);
+			ASSERT(len >= 0);
 		        next_ptr_start_adr = ptn->start + len;
 		}
 		if((ptn->start == DIFF_START_ADDR) && (start_addr_changed))
@@ -181,8 +147,7 @@ void target_init(void)
 	}
 
 	smem_add_modem_partitions(&flash_ptable);
-	
-	//display_init();
+
 	ptable_dump(&flash_ptable);
 	flash_set_ptable(&flash_ptable);
 }
@@ -215,4 +180,16 @@ unsigned check_reboot_mode(void)
 
 void target_battery_charging_enable(unsigned enable, unsigned disconnect)
 {
+    if(disconnect){
+      usb_charger_reset();
+      return;
+    }
+    else
+      usb_stop_charging(!enable);
+
+    for(;;)
+    {
+      thread_sleep(10);
+      usb_charger_change_state();
+    }
 }

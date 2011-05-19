@@ -1,8 +1,8 @@
-# top level project rules for the msm7k_thunderg project
+# top level project rules for the msm7627_thunderg project
 #
 LOCAL_DIR := $(GET_LOCAL_DIR)
 
-TARGET := msm7k_thunderg
+TARGET := msm7627_thunderg
 
 MODULES += app/aboot
 

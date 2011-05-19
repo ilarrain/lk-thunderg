@@ -34,7 +34,16 @@
 #else
 #define MSM_NAND_BASE 0xA0A00000
 #endif
-/* see 80-VA736-2 C pp 354-414 */
+
+#define MSM_NAND_NC01_BASE 	0xA0240000
+#define MSM_NAND_NC10_BASE 	0xA0280000
+#define MSM_NAND_NC11_BASE 	0xA02C0000
+#define EBI2_REG_BASE 		0xA0000000
+
+#define NC01(off) (MSM_NAND_NC01_BASE + (off))
+#define NC10(off) (MSM_NAND_NC10_BASE + (off))
+#define NC11(off) (MSM_NAND_NC11_BASE + (off))
+#define EBI2_REG(off) (EBI2_REG_BASE + (off))
 
 #define MSM_NAND_NC01_BASE 	0xA0240000
 #define MSM_NAND_NC10_BASE 	0xA0280000

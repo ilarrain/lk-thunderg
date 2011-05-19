@@ -359,7 +359,7 @@ static struct init_table toshiba_480x640_init_table[] = {
 	{ ASY_CMDSET,           0x00000005 },  //   # LCD.ASY_CMDSET  # Direct command transfer enable
 	{ ASY_CMDSET,           0x00000004 },  //   # LCD.ASY_CMDSET  # Direct command transfer disable
 	{ 0,                    10         },  //  wait_ms(10);
-	{ ASY_DATA,             0x80000000 },  //   # LCD.ASY_DATx  # DUMMY write_client_reg(Å@*NOTE2
+	{ ASY_DATA,             0x80000000 },  //   # LCD.ASY_DATx  # DUMMY write_client_reg( @*NOTE2
 	{ ASY_DATB,             0x80000000 },  //     
 	{ ASY_DATC,             0x80000000 },  //     
 	{ ASY_DATD,             0x80000000 },  //     

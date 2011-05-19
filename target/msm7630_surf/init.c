@@ -37,11 +37,13 @@
 #include <dev/flash.h>
 #include <smem.h>
 
-#define LINUX_MACHTYPE_7x30_SURF   1007016
-#define LINUX_MACHTYPE_7x30_FFA    1007017
-#define LINUX_MACHTYPE_7x30_FLUID  1007018
-#define LINUX_MACHTYPE_8x55_SURF   2768
-#define LINUX_MACHTYPE_8x55_FFA    2769
+#define LINUX_MACHTYPE_7x30_SURF          1007016
+#define LINUX_MACHTYPE_7x30_FFA           1007017
+#define LINUX_MACHTYPE_7x30_FLUID         1007018
+#define LINUX_MACHTYPE_8x55_SURF          2768
+#define LINUX_MACHTYPE_8x55_FFA           2769
+#define LINUX_MACHTYPE_8x55_SVLTE_FFA     2863
+#define LINUX_MACHTYPE_8x55_SVLTE_SURF    2864
 
 #define MSM8255_ID                 74
 #define MSM8655_ID                 75
@@ -53,6 +55,7 @@ enum platform
     HW_PLATFORM_SURF    = 1,
     HW_PLATFORM_FFA     = 2,
     HW_PLATFORM_FLUID   = 3,
+    HW_PLATFORM_SVLTE   = 4,
     HW_PLATFORM_32BITS  = 0x7FFFFFFF
 };
 
@@ -74,32 +77,32 @@ static int hw_platform_type = -1;
 static struct ptentry board_part_list[] = {
 	{
 		.start = 0,
-		.length = 20  /* 5MB */,
+		.length = 5 /* In MB */,
 		.name = "boot",
 	},
 	{
-		.start = 20,
-		.length = 420 /* 105MB */,
+		.start = DIFF_START_ADDR,
+		.length = 105 /* In MB */,
 		.name = "system",
 	},
 	{
-		.start = 440,
-		.length = 20 /* 5MB */,
+		.start = DIFF_START_ADDR,
+		.length = 5 /* In MB */,
 		.name = "cache",
 	},
 	{
-		.start = 460,
+		.start = DIFF_START_ADDR,
 		.length = VARIABLE_LENGTH,
 		.name = "userdata",
 	},
 	{
 		.start = DIFF_START_ADDR,
-		.length = 12 /* 3MB */,
+		.length = 3 /* In MB */,
 		.name = "persist",
 	},
 	{
 		.start = DIFF_START_ADDR,
-		.length = 20 /* 5MB */,
+		.length = 5 /* In MB */,
 		.name = "recovery",
 	},
 };
@@ -120,8 +123,8 @@ void target_init(void)
 	unsigned offset;
 	struct flash_info *flash_info;
 	unsigned total_num_of_blocks;
-	bool  start_addr_changed = false;
 	unsigned next_ptr_start_adr = 0;
+	unsigned blocks_per_1MB = 8; /* Default value of 2k page size on 256MB flash drive*/
 	int i;
 
 	dprintf(INFO, "target_init()\n");
@@ -146,32 +149,32 @@ void target_init(void)
 	        while(1);
 
 	total_num_of_blocks = (flash_info->block_size)/NUM_PAGES_PER_BLOCK;
+	blocks_per_1MB = total_num_of_blocks /
+	         (((flash_info->block_size) * (flash_info->page_size)) >> 20);
 
 	for (i = 0; i < num_parts; i++) {
 		struct ptentry *ptn = &board_part_list[i];
-		unsigned len = ptn->length;
+		unsigned len = ((ptn->length) * blocks_per_1MB);
 
-		if(len == VARIABLE_LENGTH)
+		if(ptn->start != 0)
+		        ASSERT(ptn->start == DIFF_START_ADDR);
+
+		ptn->start = next_ptr_start_adr;
+
+		if(ptn->length == VARIABLE_LENGTH)
 		{
-		        start_addr_changed = true;
 			unsigned length_for_prt = 0;
 			unsigned j;
 			for (j = i+1; j < num_parts; j++)
 			{
 			        struct ptentry *temp_ptn = &board_part_list[j];
 			        ASSERT(temp_ptn->length != VARIABLE_LENGTH);
-			        length_for_prt += temp_ptn->length;
+			        length_for_prt += ((temp_ptn->length) * blocks_per_1MB);
 			}
 		        len = (total_num_of_blocks - 1) - (offset + ptn->start + length_for_prt);
 			ASSERT(len >= 0);
-		        next_ptr_start_adr = ptn->start + len;
 		}
-		if((ptn->start == DIFF_START_ADDR) && (start_addr_changed))
-		{
-		        ASSERT(next_ptr_start_adr);
-			ptn->start = next_ptr_start_adr;
-			next_ptr_start_adr = ptn->start + ptn->length;
-		}
+		next_ptr_start_adr = ptn->start + len;
 		ptable_add(&flash_ptable, ptn->name, offset + ptn->start,
 			   len, ptn->flags, TYPE_APPS_PARTITION, PERM_WRITEABLE);
 	}
@@ -236,6 +239,8 @@ unsigned board_machtype(void)
 				      LINUX_MACHTYPE_8x55_FFA : LINUX_MACHTYPE_7x30_FFA);      break;
 		case HW_PLATFORM_FLUID:
 		    hw_platform_type = LINUX_MACHTYPE_7x30_FLUID;                              break;
+		case HW_PLATFORM_SVLTE:
+		    hw_platform_type = LINUX_MACHTYPE_8x55_SVLTE_FFA;                          break;
 		default:
 		    hw_platform_type = ((target_is_msm8x55()) ?
 				      LINUX_MACHTYPE_8x55_SURF : LINUX_MACHTYPE_7x30_SURF);    break;
