@@ -61,16 +61,21 @@ static struct ptentry board_part_list[] = {
 	},
 	{
 		.start = 40,
-		.length = 760 /* 95MB */,
+		.length = 800 /* 100MB */,
 		.name = "system",
 	},
 	{
-		.start = 800,
-		.length = 40 /* 5MB */,
+		.start = 840,
+		.length = 240 /* 30MB */,
 		.name = "cache",
 	},
 	{
-		.start = 840,
+		.start = 1080,
+		.length = 3 /* 384KB */,
+		.name = "misc",
+	},
+	{
+		.start = 1083,
 		.length = VARIABLE_LENGTH,
 		.name = "userdata",
 	},
@@ -115,7 +120,7 @@ void target_init(void)
 	if (offset == 0xffffffff)
 	        while(1);
 
-	total_num_of_blocks = (flash_info->block_size)/NUM_PAGES_PER_BLOCK;
+	total_num_of_blocks = flash_info->num_blocks;
 
 	for (i = 0; i < num_parts; i++) {
 		struct ptentry *ptn = &board_part_list[i];

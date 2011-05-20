@@ -31,7 +31,8 @@
 #ifndef __DEV_FBCON_H
 #define __DEV_FBCON_H
 
-#define FB_FORMAT_RGB565 0
+#define FB_FORMAT_RGB565 1
+#define FB_FORMAT_RGB888 0
 
 struct fbcon_config {
 	void		*base;

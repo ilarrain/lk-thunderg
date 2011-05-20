@@ -37,6 +37,27 @@
 #include <kernel/thread.h>
 #include <platform/debug.h>
 #include <platform/iomap.h>
+#include <i2c_qup.h>
+
+#define CONVERT_ENDIAN_U32(val)                   \
+    ((((uint32_t)(val) & 0x000000FF) << 24) |     \
+     (((uint32_t)(val) & 0x0000FF00) << 8)  |     \
+     (((uint32_t)(val) & 0x00FF0000) >> 8)  |     \
+     (((uint32_t)(val) & 0xFF000000) >> 24))
+
+#define CONVERT_ENDIAN_U16(val)              \
+    ((((uint16_t)(val) & 0x00FF) << 8) |     \
+     (((uint16_t)(val) & 0xFF00) >> 8))
+
+/* Configuration Data Table */
+#define CDT_MAGIC_NUMBER    0x43445400
+struct cdt_header
+{
+    uint32_t magic;   /* Magic number */
+    uint16_t version; /* Version number */
+    uint32_t reserved1;
+    uint32_t reserved2;
+}__attribute__((packed));
 
 void platform_init_interrupts(void);
 void platform_init_timer();
@@ -48,6 +69,7 @@ struct fbcon_config *lcdc_init(void);
 
 void platform_early_init(void)
 {
+    uart_init();
     platform_init_interrupts();
     platform_init_timer();
 }
@@ -59,12 +81,71 @@ void platform_init(void)
 
 void display_init(void)
 {
+    struct fbcon_config *fb_cfg;
+#if DISPLAY_TYPE_LCDC
+    mdp_clock_init();
+    fb_cfg = lcdc_init();
+    panel_poweron();
+    fbcon_setup(fb_cfg);
+#endif
+#if DISPLAY_TYPE_MIPI
+    mdp_clock_init();
+    fb_cfg = mipi_init();
+    fbcon_setup(fb_cfg);
+#endif
+
 }
 
-void secondary_core(unsigned sec_entry)
+void display_shutdown(void)
 {
-    writel(sec_entry, 0x2A040020);
-    writel(0x0, 0x009035A0); //VDD_SC1_ARRAY_CLAMP_GFS_CTL
-    writel(0x0, 0x00902D80); //SCSS_CPU1CORE_RESET
-    writel(0x3, 0x00902E64); //SCSS_DBG_STATUS_CORE_PWRDUP
+#if DISPLAY_TYPE_LCDC
+    /* Turning off LCDC */
+    lcdc_shutdown();
+#endif
+#if DISPLAY_TYPE_MIPI
+    mipi_dsi_shutdown();
+#endif
 }
+
+static struct qup_i2c_dev* dev = NULL;
+
+uint32_t eprom_read (uint16_t addr, uint8_t count) {
+    uint32_t ret = 0;
+    if(!dev){
+        return ret;
+    }
+    /* Create a i2c_msg buffer, that is used to put the controller into
+     * read mode and then to read some data.
+     */
+    struct i2c_msg msg_buf[] = {
+        {EEPROM_I2C_ADDRESS, I2C_M_WR, 2, &addr},
+        {EEPROM_I2C_ADDRESS, I2C_M_RD, count, &ret}
+    };
+
+    qup_i2c_xfer(dev, msg_buf, 2);
+    return ret;
+}
+
+/* Read EEPROM to find out product id. Return 0 in case of failure */
+uint32_t platform_id_read (void)
+{
+    uint32_t id = 0;
+    uint16_t offset = 0;
+    dev = qup_i2c_init(GSBI8_BASE, 100000, 24000000);
+    if(!dev){
+        return id;
+    }
+    /* Check if EPROM is valid */
+    if (CONVERT_ENDIAN_U32(eprom_read(0, 4)) == CDT_MAGIC_NUMBER)
+    {
+        /* Get offset for platform ID info from Meta Data block 0 */
+        offset = eprom_read(CONVERT_ENDIAN_U16(0 +
+            sizeof(struct cdt_header)), 2);
+        /* Read platform ID */
+        id = eprom_read(CONVERT_ENDIAN_U16(offset), 4);
+        id = CONVERT_ENDIAN_U32(id);
+        id = (id & 0x00FF0000) >> 16;
+    }
+    return id;
+}
+

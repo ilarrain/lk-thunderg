@@ -82,19 +82,46 @@ struct smem_board_info_v4
     unsigned buffer_align; //Need for 8 bytes alignment while reading from shared memory.
 };
 
+struct smem_board_info_v5
+{
+    struct smem_board_info_v3 board_info_v3;
+    unsigned platform_version;
+    unsigned fused_chip;
+};
+
+/* chip information */
+enum {
+    UNKNOWN = 0,
+    MDM9200 = 57,
+    MDM9600 = 58,
+};
+
+enum platform
+{
+    HW_PLATFORM_UNKNOWN = 0,
+    HW_PLATFORM_SURF    = 1,
+    HW_PLATFORM_FFA     = 2,
+    HW_PLATFORM_FLUID   = 3,
+    HW_PLATFORM_SVLTE   = 4,
+    HW_PLATFORM_32BITS  = 0x7FFFFFFF
+};
+
+
 typedef enum {
 	SMEM_SPINLOCK_ARRAY = 7,
 
 	SMEM_AARM_PARTITION_TABLE = 9,
 
-        SMEM_APPS_BOOT_MODE = 106,
+	SMEM_APPS_BOOT_MODE = 106,
 
-        SMEM_BOARD_INFO_LOCATION = 137,
+	SMEM_BOARD_INFO_LOCATION = 137,
 
 	SMEM_USABLE_RAM_PARTITION_TABLE = 402,
 
+	SMEM_POWER_ON_STATUS_INFO = 403,
+
 	SMEM_FIRST_VALID_TYPE = SMEM_SPINLOCK_ARRAY,
-	SMEM_LAST_VALID_TYPE = SMEM_USABLE_RAM_PARTITION_TABLE,
+	SMEM_LAST_VALID_TYPE = SMEM_POWER_ON_STATUS_INFO,
 } smem_mem_type_t;
 
 /* Note: buf MUST be 4byte aligned, and max_len MUST be a multiple of 4. */
@@ -128,6 +155,14 @@ enum {
     SHARED_DOMAIN,
 };
 
+enum {
+	SYS_MEMORY = 1,        /* system memory*/
+	BOOT_REGION_MEMORY1,   /* boot loader memory 1*/
+	BOOT_REGION_MEMORY2,   /* boot loader memory 2,reserved*/
+	APPSBL_MEMORY,         /* apps boot loader memory*/
+	APPS_MEMORY,           /* apps  usage memory*/
+};
+
 struct smem_ram_ptn {
 	char name[16];
 	unsigned start;
@@ -142,8 +177,11 @@ struct smem_ram_ptn {
 	/* RAM Partition domain: APPS, MODEM, APPS & MODEM (SHARED) etc. */
 	unsigned domain;
 
+	/* RAM Partition type: system, bootloader, appsboot, apps etc. */
+	unsigned type;
+
 	/* reserved for future expansion without changing version number */
-	unsigned reserved1, reserved2, reserved3, reserved4, reserved5;
+	unsigned reserved2, reserved3, reserved4, reserved5;
 } __attribute__ ((__packed__));
 
 struct smem_ram_ptable {
@@ -157,6 +195,7 @@ struct smem_ram_ptable {
 	unsigned buf;
 } __attribute__ ((__packed__));
 
-
+/* Power on reason/status info */
+#define PWR_ON_EVENT_USB_CHG 0x20
 
 #endif /* __PLATFORM_MSM_SHARED_SMEM_H */

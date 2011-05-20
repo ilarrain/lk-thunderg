@@ -2,6 +2,8 @@
  * Copyright (c) 2008, Google Inc.
  * All rights reserved.
  *
+ * Copyright (c) 2009-2010, Code Aurora Forum. All rights reserved.
+ *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
  * are met:
@@ -31,42 +33,23 @@
 #include <reg.h>
 #include <platform/iomap.h>
 #include <dev/fbcon.h>
+#include <target/display.h>
 
+#if PLATFORM_MSM7X30
+#define MSM_MDP_BASE1 0xA3F00000
+#define LCDC_BASE     0xC0000
+#elif PLATFORM_MSM8X60
+#define MSM_MDP_BASE1 0x05100000
+#define LCDC_BASE     0xC0000
+#define LCDC_FB_ADDR  0x43E00000
+#else
 #define MSM_MDP_BASE1 0xAA200000
+#define LCDC_BASE     0xE0000
+#endif
 
 #define LCDC_PIXCLK_IN_PS 26
 #define LCDC_FB_PHYS      0x16600000
 #define LCDC_FB_BPP       16
-
-#if 1
-/* SURF */
-#define LCDC_FB_WIDTH     800
-#define LCDC_FB_HEIGHT    480
-
-#define LCDC_HSYNC_PULSE_WIDTH_DCLK 60
-#define LCDC_HSYNC_BACK_PORCH_DCLK  81
-#define LCDC_HSYNC_FRONT_PORCH_DCLK 81
-#define LCDC_HSYNC_SKEW_DCLK        0
-
-#define LCDC_VSYNC_PULSE_WIDTH_LINES 2
-#define LCDC_VSYNC_BACK_PORCH_LINES  20
-#define LCDC_VSYNC_FRONT_PORCH_LINES 27
-
-#else
-/* FFA */
-#define LCDC_FB_WIDTH     480
-#define LCDC_FB_HEIGHT    640
-
-#define LCDC_HSYNC_PULSE_WIDTH_DCLK 60
-#define LCDC_HSYNC_BACK_PORCH_DCLK  144
-#define LCDC_HSYNC_FRONT_PORCH_DCLK 33
-#define LCDC_HSYNC_SKEW_DCLK        0
-
-#define LCDC_VSYNC_PULSE_WIDTH_LINES 2
-#define LCDC_VSYNC_BACK_PORCH_LINES  2
-#define LCDC_VSYNC_FRONT_PORCH_LINES 2
-
-#endif
 
 #define BIT(x)  (1<<(x))
 #define DMA_DSTC0G_8BITS (BIT(1)|BIT(0))
@@ -83,6 +66,9 @@
 #define DMA_OUT_SEL_LCDC                    BIT(20)
 #define DMA_IBUF_FORMAT_RGB565              BIT(25)
 
+#define MDP_RGB_SIZE	((LCDC_FB_HEIGHT<<16) + LCDC_FB_WIDTH)
+#define MDP_RGB_565_FORMAT (BIT(14) | (1<<9) | (0<<8) | (0<<6) | (1<<4) | (1<<2) | (2<<0))
+
 static struct fbcon_config fb_cfg = {
 	.height		= LCDC_FB_HEIGHT,
 	.width		= LCDC_FB_WIDTH,
@@ -98,11 +84,12 @@ void lcdc_clock_init(unsigned rate);
 struct fbcon_config *lcdc_init(void)
 {
 	dprintf(INFO, "lcdc_init(): panel is %d x %d\n", fb_cfg.width, fb_cfg.height);
-
+#if PLATFORM_MSM8X60
+	fb_cfg.base = LCDC_FB_ADDR;
+#else
 	fb_cfg.base =
 		memalign(4096, fb_cfg.width * fb_cfg.height * (fb_cfg.bpp / 8));
-
-	lcdc_clock_init(1000000000 / LCDC_PIXCLK_IN_PS);
+#endif
 
 	writel((unsigned) fb_cfg.base, MSM_MDP_BASE1 + 0x90008);
 
@@ -122,22 +109,53 @@ struct fbcon_config *lcdc_init(void)
 	int display_vstart= (LCDC_VSYNC_PULSE_WIDTH_LINES + LCDC_VSYNC_BACK_PORCH_LINES) * hsync_period + LCDC_HSYNC_SKEW_DCLK;
 	int display_vend  = vsync_period - (LCDC_VSYNC_FRONT_PORCH_LINES * hsync_period) + LCDC_HSYNC_SKEW_DCLK - 1;
 
-	writel((hsync_period << 16) | LCDC_HSYNC_PULSE_WIDTH_DCLK, MSM_MDP_BASE1 + 0xe0004);
-	writel(vsync_period, MSM_MDP_BASE1 + 0xe0008);
-	writel(LCDC_VSYNC_PULSE_WIDTH_LINES * hsync_period, MSM_MDP_BASE1 + 0xe000c);
-	writel(display_hctl, MSM_MDP_BASE1 + 0xe0010);
-	writel(display_vstart, MSM_MDP_BASE1 + 0xe0014);
-	writel(display_vend, MSM_MDP_BASE1 + 0xe0018);
-	writel(0, MSM_MDP_BASE1 + 0xe0028);
-	writel(0xff, MSM_MDP_BASE1 + 0xe002c);
-	writel(LCDC_HSYNC_SKEW_DCLK, MSM_MDP_BASE1 + 0xe0030);
-	writel(0, MSM_MDP_BASE1 + 0xe0038);
-	writel(0, MSM_MDP_BASE1 + 0xe001c);
-	writel(0, MSM_MDP_BASE1 + 0xe0020);
-	writel(0, MSM_MDP_BASE1 + 0xe0024);
+	writel((hsync_period << 16) | LCDC_HSYNC_PULSE_WIDTH_DCLK, MSM_MDP_BASE1 + LCDC_BASE + 0x4);
+	writel(vsync_period, MSM_MDP_BASE1 + LCDC_BASE + 0x8);
+	writel(LCDC_VSYNC_PULSE_WIDTH_LINES * hsync_period, MSM_MDP_BASE1 + LCDC_BASE + 0xc);
+	writel(display_hctl, MSM_MDP_BASE1 + LCDC_BASE + 0x10);
+	writel(display_vstart, MSM_MDP_BASE1 + LCDC_BASE + 0x14);
+	writel(display_vend, MSM_MDP_BASE1 + LCDC_BASE + 0x18);
 
-	writel(1, MSM_MDP_BASE1 + 0xe0000);
+#if MDP4
+	writel(0xf, MSM_MDP_BASE1 + LCDC_BASE + 0x28);
+	writel(0xff, MSM_MDP_BASE1 + LCDC_BASE + 0x2c);
+	writel(LCDC_HSYNC_SKEW_DCLK, MSM_MDP_BASE1 + LCDC_BASE + 0x30);
+	writel(0x3, MSM_MDP_BASE1 + LCDC_BASE + 0x38);
+	writel(0, MSM_MDP_BASE1 + LCDC_BASE + 0x1c);
+	writel(0, MSM_MDP_BASE1 + LCDC_BASE + 0x20);
+	writel(0, MSM_MDP_BASE1 + LCDC_BASE + 0x24);
+
+	/* setting for single layer direct out mode for rgb565 source */
+	writel(0x100, MSM_MDP_BASE1 + 0x10100);
+	writel(MDP_RGB_SIZE, MSM_MDP_BASE1 + 0x40000);
+	writel(MDP_RGB_SIZE, MSM_MDP_BASE1 + 0x40008);
+	writel(fb_cfg.base, MSM_MDP_BASE1 + 0x40010);
+	writel(fb_cfg.width * fb_cfg.bpp / 8, MSM_MDP_BASE1 + 0x40040);
+	writel(0x00, MSM_MDP_BASE1 + 0x41008);
+	writel(MDP_RGB_565_FORMAT, MSM_MDP_BASE1 + 0x40050);
+	writel(0x1, MSM_MDP_BASE1 + 0x10004);
+	writel(0x1, MSM_MDP_BASE1 + 0x10014);
+
+	/* register flush and enable LCDC */
+	writel(0x11, MSM_MDP_BASE1 + 0x18000);
+	writel(0x1, MSM_MDP_BASE1 + LCDC_BASE + 0x0);
+
+#else
+	writel(0, MSM_MDP_BASE1 + LCDC_BASE + 0x28);
+	writel(0xff, MSM_MDP_BASE1 + LCDC_BASE + 0x2c);
+	writel(LCDC_HSYNC_SKEW_DCLK, MSM_MDP_BASE1 + LCDC_BASE + 0x30);
+	writel(0, MSM_MDP_BASE1 + LCDC_BASE + 0x38);
+	writel(0, MSM_MDP_BASE1 + LCDC_BASE + 0x1c);
+	writel(0, MSM_MDP_BASE1 + LCDC_BASE + 0x20);
+	writel(0, MSM_MDP_BASE1 + LCDC_BASE + 0x24);
+	writel(1, MSM_MDP_BASE1 + LCDC_BASE + 0x0);
+#endif
 
 	return &fb_cfg;
+}
+
+void lcdc_shutdown(void)
+{
+    writel(0, MSM_MDP_BASE1 + LCDC_BASE + 0x0);
 }
 

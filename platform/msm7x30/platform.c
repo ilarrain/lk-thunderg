@@ -32,23 +32,42 @@
 
 #include <debug.h>
 
+#include <reg.h>
 #include <dev/fbcon.h>
 #include <kernel/thread.h>
 #include <platform/debug.h>
+#include <mddi_hw.h>
+#include "gpio_hw.h"
 
 void platform_init_interrupts(void);
 void platform_init_timer();
 
-void uart3_clock_init(void);
+void uart2_clock_init(void);
 void uart_init(void);
 
 struct fbcon_config *lcdc_init(void);
 
+#define ARRAY_SIZE(a) (sizeof(a)/(sizeof((a)[0])))
+
+static unsigned uart2_gpio_table[] = {
+       GPIO_CFG(49, 2, GPIO_OUTPUT, GPIO_PULL_DOWN, GPIO_2MA),
+       GPIO_CFG(50, 2, GPIO_INPUT, GPIO_PULL_DOWN, GPIO_2MA),
+       GPIO_CFG(51, 2, GPIO_INPUT, GPIO_PULL_DOWN, GPIO_2MA),
+       GPIO_CFG(52, 2, GPIO_OUTPUT, GPIO_PULL_DOWN, GPIO_2MA),
+};
+
+void uart2_mux_init(void)
+{
+       platform_gpios_enable(uart2_gpio_table, ARRAY_SIZE(uart2_gpio_table));
+}
+
 void platform_early_init(void)
 {
-        //uart3_clock_init();
-	//uart_init();
-
+#if WITH_DEBUG_UART
+	uart2_mux_init();
+	uart2_clock_init();
+	uart_init();
+#endif
 	platform_init_interrupts();
 	platform_init_timer();
 }
@@ -59,10 +78,64 @@ void platform_init(void)
 
 	dprintf(INFO, "platform_init()\n");
 	acpu_clock_init();
+	adm_enable_clock();
 }
+
+void mdp4_display_intf_sel(int output, int intf)
+{
+    unsigned bits, mask;
+    unsigned dma2_cfg_reg;
+    bits =  readl(MSM_MDP_BASE1 + 0x0038);
+    mask = 0x03;	/* 2 bits */
+    intf &= 0x03;	/* 2 bits */
+
+    switch (output) {
+        case EXTERNAL_INTF_SEL:
+                intf <<= 4;
+                mask <<= 4;
+                break;
+        case SECONDARY_INTF_SEL:
+                intf &= 0x02;   /* only MDDI and EBI2 support */
+                intf <<= 2;
+                mask <<= 2;
+                break;
+        default:
+                break;
+        }
+
+    bits &= ~mask;
+    bits |= intf;
+    writel(bits, MSM_MDP_BASE1 + 0x0038);	/* MDP_DISP_INTF_SEL */
+}
+
+
 
 void display_init(void)
 {
-        //fb_cfg = lcdc_init();
-	//fbcon_setup(fb_cfg);
+    struct fbcon_config *fb_cfg;
+
+#if DISPLAY_TYPE_MDDI
+    mddi_clock_init(0, 480000000);
+    mddi_panel_poweron();
+    /* We need to config GPIO 38 for Sleep clock with Spl Fun 2 */
+    toshiba_pmic_gpio_init(GPIO38_GPIO_CNTRL);
+    fb_cfg = mddi_init();
+    fbcon_setup(fb_cfg);
+#endif
+
+#if DISPLAY_TYPE_LCDC
+    mdp_clock_init(122880000);
+    fb_cfg = lcdc_init();
+    panel_poweron();
+    fbcon_setup(fb_cfg);
+#endif
 }
+
+void display_shutdown(void)
+{
+#if DISPLAY_TYPE_LCDC
+    /* Turning off LCDC */
+    lcdc_shutdown();
+#endif
+}
+

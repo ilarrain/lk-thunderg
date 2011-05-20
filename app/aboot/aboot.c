@@ -47,6 +47,8 @@
 #include "bootimg.h"
 #include "fastboot.h"
 
+#define EXPAND(NAME) #NAME
+#define TARGET(NAME) EXPAND(NAME)
 #define DEFAULT_CMDLINE "mem=471M console=ttyMSM2,115200n8 androidboot.hardware=thunderg";
 
 #ifdef MEMBASE
@@ -59,6 +61,7 @@
 #define FASTBOOT_MODE   0x77665500
 
 static const char *emmc_cmdline = " androidboot.emmc=true";
+static const char *battchg_pause = " androidboot.battchg_pause=true";
 
 static const char *append_cmdline = " uart_console=disable lge.rev=rev_11 lge.hreset=off lge.reboot=pwroff lge.lcd=on";
 
@@ -86,7 +89,11 @@ void *target_get_scratch_address(void);
 int target_is_emmc_boot(void);
 void reboot_device(unsigned);
 void target_battery_charging_enable(unsigned enable, unsigned disconnect);
-
+unsigned int mmc_write (unsigned long long data_addr,
+			unsigned int data_len, unsigned int* in);
+unsigned long long mmc_ptn_offset (unsigned char * name);
+unsigned long long mmc_ptn_size (unsigned char * name);
+void display_shutdown(void);
 
 static void ptentry_to_tag(unsigned **ptr, struct ptentry *ptn)
 {
@@ -113,6 +120,7 @@ void boot_linux(void *kernel, unsigned *tags,
 	struct ptable *ptable;
 	int cmdline_len = 0;
 	int have_cmdline = 0;
+	int pause_at_bootup = 0;
 
 	/* CORE */
 	*ptr++ = 2;
@@ -152,6 +160,10 @@ void boot_linux(void *kernel, unsigned *tags,
 	if (target_is_emmc_boot()) {
 		cmdline_len += strlen(emmc_cmdline);
 	}
+	if (target_pause_for_battery_charge()) {
+		pause_at_bootup = 1;
+		cmdline_len += strlen(battchg_pause);
+	}
 	
 	cmdline_len += strlen(append_cmdline);
 	
@@ -170,6 +182,12 @@ void boot_linux(void *kernel, unsigned *tags,
 		}
 		if (target_is_emmc_boot()) {
 			src = emmc_cmdline;
+			if (have_cmdline) --dst;
+			have_cmdline = 1;
+			while ((*dst++ = *src++));
+		}
+		if (pause_at_bootup) {
+			src = battchg_pause;
 			if (have_cmdline) --dst;
 			while ((*dst++ = *src++));
 		}
@@ -194,8 +212,9 @@ void boot_linux(void *kernel, unsigned *tags,
 	platform_uninit_timer();
 	arch_disable_cache(UCACHE);
 	arch_disable_mmu();
-
-	secondary_core((unsigned)kernel);
+#if DISPLAY_SPLASH_SCREEN
+	display_shutdown();
+#endif
 	entry(0, machtype, tags);
 	dprintf(INFO, "tgs is: %x\n", tags);
 }
@@ -222,28 +241,38 @@ int boot_linux_from_mmc(void)
 		hdr = uhdr;
 		goto unified_boot;
 	}
-
-	ptn = mmc_ptn_offset("boot");
-	if(ptn == 0) {
-		dprintf(CRITICAL, "ERROR: No boot partition found\n");
-                return -1;
+	if(!boot_into_recovery)
+	{
+		ptn = mmc_ptn_offset("boot");
+		if(ptn == 0) {
+			dprintf(CRITICAL, "ERROR: No boot partition found\n");
+                    return -1;
+		}
+	}
+	else
+	{
+		ptn = mmc_ptn_offset("recovery");
+		if(ptn == 0) {
+			dprintf(CRITICAL, "ERROR: No recovery partition found\n");
+                    return -1;
+		}
 	}
 
 	if (mmc_read(ptn + offset, (unsigned int *)buf, page_size)) {
 		dprintf(CRITICAL, "ERROR: Cannot read boot image header\n");
                 return -1;
 	}
-	offset += page_size;
 
 	if (memcmp(hdr->magic, BOOT_MAGIC, BOOT_MAGIC_SIZE)) {
 		dprintf(CRITICAL, "ERROR: Invaled boot image header\n");
                 return -1;
 	}
 
-	if (hdr->page_size != page_size) {
-		dprintf(CRITICAL, "ERROR: Invaled boot image pagesize. Device pagesize: %d, Image pagesize: %d\n",page_size,hdr->page_size);
-		return -1;
+	if (hdr->page_size && (hdr->page_size != page_size)) {
+		page_size = hdr->page_size;
+		page_mask = page_size - 1;
 	}
+	offset += page_size;
 
 	n = ROUND_TO_PAGE(hdr->kernel_size, page_mask);
 	if (mmc_read(ptn + offset, (void *)hdr->kernel_addr, n)) {
@@ -288,7 +317,6 @@ int boot_linux_from_flash(void)
 	struct ptable *ptable;
 	unsigned offset = 0;
 	const char *cmdline;
-	struct fbcon_config *fb_display = NULL;
 
 	if (target_is_emmc_boot()) {
 		hdr = (struct boot_img_hdr *)EMMC_BOOT_IMG_HEADER_ADDR;
@@ -304,22 +332,6 @@ int boot_linux_from_flash(void)
 		dprintf(CRITICAL, "ERROR: Partition table not found\n");
 		return -1;
 	}
-
-#if DISPLAY_SPLASH_SCREEN
-	ptn = ptable_find(ptable, "splash");
-	if (ptn == NULL) {
-        dprintf(CRITICAL, "ERROR: No splash partition found\n");
-	} else {
-		fb_display = fbcon_display();
-		if (fb_display) {
-			if (flash_read(ptn, 0, fb_display->base,
-			    (fb_display->width * fb_display->height * fb_display->bpp/8))) {
-				//fbcon_clear();
-				dprintf(CRITICAL, "ERROR: Cannot read splash image\n");
-			}
-		}
-	}
-#endif
 
 	if(!boot_into_recovery)
 	{
@@ -408,6 +420,11 @@ void cmd_boot(const char *arg, void *data, unsigned sz)
 	/* ensure commandline is terminated */
 	hdr.cmdline[BOOT_ARGS_SIZE-1] = 0;
 
+	if(target_is_emmc_boot() && hdr.page_size) {
+		page_size = hdr.page_size;
+		page_mask = page_size - 1;
+	}
+
 	kernel_actual = ROUND_TO_PAGE(hdr.kernel_size, page_mask);
 	ramdisk_actual = ROUND_TO_PAGE(hdr.ramdisk_size, page_mask);
 
@@ -452,9 +469,34 @@ void cmd_erase(const char *arg, void *data, unsigned sz)
 	fastboot_okay("");
 }
 
+
+void cmd_erase_mmc(const char *arg, void *data, unsigned sz)
+{
+	unsigned long long ptn = 0;
+	unsigned int out[512] = {0};
+
+	ptn = mmc_ptn_offset(arg);
+	if(ptn == 0) {
+		fastboot_fail("partition table doesn't exist");
+		return;
+	}
+
+
+	/* Simple inefficient version of erase. Just writing
+	   0 in first block */
+	if (mmc_write(ptn , 512, (unsigned int *)out)) {
+		fastboot_fail("failed to erase partition");
+		return;
+	}
+	fastboot_okay("");
+}
+
+
 void cmd_flash_mmc(const char *arg, void *data, unsigned sz)
 {
 	unsigned long long ptn = 0;
+	unsigned long long size = 0;
+
 	ptn = mmc_ptn_offset(arg);
 	if(ptn == 0) {
 		fastboot_fail("partition table doesn't exist");
@@ -466,6 +508,12 @@ void cmd_flash_mmc(const char *arg, void *data, unsigned sz)
 			fastboot_fail("image is not a boot image");
 			return;
 		}
+	}
+
+	size = mmc_ptn_size(arg);
+	if (ROUND_TO_PAGE(sz,511) > size) {
+		fastboot_fail("size too large");
+		return;
 	}
 
 	if (mmc_write(ptn , sz, (unsigned int *)data)) {
@@ -545,17 +593,43 @@ void cmd_reboot_bootloader(const char *arg, void *data, unsigned sz)
 	reboot_device(FASTBOOT_MODE);
 }
 
+void splash_screen ()
+{
+	struct ptentry *ptn;
+	struct ptable *ptable;
+	struct fbcon_config *fb_display = NULL;
+
+	if (!target_is_emmc_boot())
+	{
+		ptable = flash_get_ptable();
+		if (ptable == NULL) {
+			dprintf(CRITICAL, "ERROR: Partition table not found\n");
+			return -1;
+		}
+
+		ptn = ptable_find(ptable, "splash");
+		if (ptn == NULL) {
+			dprintf(CRITICAL, "ERROR: No splash partition found\n");
+		} else {
+			fb_display = fbcon_display();
+			if (fb_display) {
+				if (flash_read(ptn, 0, fb_display->base,
+					(fb_display->width * fb_display->height * fb_display->bpp/8))) {
+					fbcon_clear();
+					dprintf(CRITICAL, "ERROR: Cannot read splash image\n");
+				}
+			}
+		}
+	}
+}
+
 void aboot_init(const struct app_descriptor *app)
 {
 	unsigned reboot_mode = 0;
 	unsigned disp_init = 0;
 	unsigned usb_init = 0;
-	#if DISPLAY_SPLASH_SCREEN
-	display_init();
-	dprintf(INFO, "Diplay initialized\n");
-	disp_init = 1;
-	#endif
 
+	/* Setup page size information for nand/emmc reads */
 	if (target_is_emmc_boot())
 	{
 		page_size = 2048;
@@ -567,6 +641,15 @@ void aboot_init(const struct app_descriptor *app)
 		page_mask = page_size - 1;
 	}
 
+	/* Display splash screen if enabled */
+	#if DISPLAY_SPLASH_SCREEN
+	display_init();
+	dprintf(INFO, "Diplay initialized\n");
+	disp_init = 1;
+	diplay_image_on_screen();
+	#endif
+
+	/* Check if we should do something other than booting up */
 	if (keys_get_state(KEY_HOME) != 0)
 		boot_into_recovery = 1;
 	if (keys_get_state(KEY_VOLUMEUP) != 0)
@@ -585,18 +668,19 @@ void aboot_init(const struct app_descriptor *app)
 		goto fastboot;
 	#endif
 
+	reboot_mode = check_reboot_mode();
+	if (reboot_mode == RECOVERY_MODE) {
+		boot_into_recovery = 1;
+	} else if(reboot_mode == FASTBOOT_MODE) {
+		goto fastboot;
+	}
+
 	if (target_is_emmc_boot())
 	{
 		boot_linux_from_mmc();
 	}
 	else
 	{
-		reboot_mode = check_reboot_mode();
-		if (reboot_mode == RECOVERY_MODE) {
-			boot_into_recovery = 1;
-		} else if(reboot_mode == FASTBOOT_MODE) {
-			goto fastboot;
-		}
 		recovery_init();
 		boot_linux_from_flash();
 	}
@@ -604,30 +688,27 @@ void aboot_init(const struct app_descriptor *app)
 		"to fastboot mode.\n");
 
 fastboot:
-	if(!disp_init) {
-		display_init();
-	} else {
-		//fbcon_clear();
-	}
-	dprintf(INFO, "Diplay initialized\n");
+
 	if(!usb_init)
 		udc_init(&surf_udc_device);
 
 	fastboot_register("boot", cmd_boot);
-	fastboot_register("erase:", cmd_erase);
+
 	if (target_is_emmc_boot())
 	{
 		fastboot_register("flash:", cmd_flash_mmc);
+		fastboot_register("erase:", cmd_erase_mmc);
 	}
 	else
 	{
 		fastboot_register("flash:", cmd_flash);
+		fastboot_register("erase:", cmd_erase);
 	}
 
 	fastboot_register("continue", cmd_continue);
 	fastboot_register("reboot", cmd_reboot);
 	fastboot_register("reboot-bootloader", cmd_reboot_bootloader);
-	fastboot_publish("product", "thunderg");
+	fastboot_publish("product", TARGET(BOARD));
 	fastboot_publish("kernel", "lk");
 
 	fastboot_init(target_get_scratch_address(), 120 * 1024 * 1024);

@@ -29,15 +29,11 @@
 #ifndef __MMC_H__
 #define __MMC_H__
 
-#ifndef MMC_BOOT_MCI_BASE
-#define MMC_BOOT_MCI_BASE   0
-#endif
-
 #ifndef MMC_SLOT
 #define MMC_SLOT            0
 #endif
 
-#define MMC_BOOT_MCI_REG(offset)          (MMC_BOOT_MCI_BASE + offset)
+#define MMC_BOOT_MCI_REG(offset)          ((mmc_boot_mci_base) + offset)
 
 /*
  * Define Macros for SDCC Registers
@@ -95,7 +91,7 @@
 /* If set waits for CmdPend before starting to send a command */
 #define MMC_BOOT_MCI_CMD_PENDING          (1 << 9)
 /* CPSM is enabled if set */
-#define MMC_BOT_MCI_CMD_ENABLE            (1 << 10)
+#define MMC_BOOT_MCI_CMD_ENABLE           (1 << 10)
 /* If set PROG_DONE status bit asserted when busy is de-asserted */
 #define MMC_BOOT_MCI_CMD_PROG_ENA         (1 << 11)
 /* To indicate that this is a Command with Data (for SDIO interrupts) */
@@ -254,6 +250,11 @@
 
 #define MMC_BOOT_MCI_FIFO                 MMC_BOOT_MCI_REG(0x080)
 
+/* Card status */
+#define MMC_BOOT_CARD_STATUS(x)          ((x>>9) & 0x0F)
+#define MMC_BOOT_TRAN_STATE              4
+#define MMC_BOOT_PROG_STATE              7
+
 /* SD Memory Card bus commands */
 #define CMD0_GO_IDLE_STATE               0
 #define CMD1_SEND_OP_COND                1
@@ -261,8 +262,10 @@
 #define CMD3_SEND_RELATIVE_ADDR          3
 #define CMD4_SET_DSR                     4
 #define CMD6_SWITCH_FUNC                 6
+#define ACMD6_SET_BUS_WIDTH              6    /* SD card */
 #define CMD7_SELECT_DESELECT_CARD        7
 #define CMD8_SEND_EXT_CSD                8
+#define CMD8_SEND_IF_COND                8    /* SD card */
 #define CMD9_SEND_CSD                    9
 #define CMD10_SEND_CID                   10
 #define CMD12_STOP_TRANSMISSION          12
@@ -273,10 +276,15 @@
 #define CMD18_READ_MULTIPLE_BLOCK        18
 #define CMD24_WRITE_SINGLE_BLOCK         24
 #define CMD25_WRITE_MULTIPLE_BLOCK       25
+#define CMD28_SET_WRITE_PROTECT          28
+#define CMD29_CLEAR_WRITE_PROTECT        29
+#define CMD31_SEND_WRITE_PROT_TYPE       31
 #define CMD32_ERASE_WR_BLK_START         32
 #define CMD33_ERASE_WR_BLK_END           33
 #define CMD38_ERASE                      38
-#define CMD55_APP_CMD                    55
+#define ACMD41_SEND_OP_COND              41    /* SD card */
+#define ACMD51_SEND_SCR                  51    /* SD card */
+#define CMD55_APP_CMD                    55    /* SD card */
 
 /* Switch Function Modes */
 #define MMC_BOOT_SWITCH_FUNC_CHECK        0
@@ -364,6 +372,27 @@
 #define MMC_BOOT_EXT_CMMC_HS_TIMING       185
 #define MMC_BOOT_EXT_CMMC_BUS_WIDTH       183
 
+#define MMC_BOOT_EXT_USER_WP              171
+#define MMC_BOOT_EXT_ERASE_GROUP_DEF      175
+#define MMC_BOOT_EXT_HC_WP_GRP_SIZE       221
+#define MMC_BOOT_EXT_HC_ERASE_GRP_SIZE    224
+
+#define IS_BIT_SET_EXT_CSD(val, bit)      ((ext_csd_buf[val]) & (1<<(bit)))
+#define IS_ADDR_OUT_OF_RANGE(resp)        ((resp >> 31) & 0x01)
+
+#define MMC_BOOT_US_PERM_WP_EN            2
+#define MMC_BOOT_US_PWR_WP_DIS            3
+
+#define MMC_BOOT_US_PERM_WP_DIS           (1<<4)
+#define MMC_BOOT_US_PWR_WP_EN             1
+
+/* For SD */
+#define MMC_BOOT_SD_HC_VOLT_SUPPLIED      0x000001AA
+#define MMC_BOOT_SD_NEG_OCR               0x00FF8000
+#define MMC_BOOT_SD_HC_HCS                0x40000000
+#define MMC_BOOT_SD_DEV_READY             0x80000000
+#define MMC_BOOT_SD_SWITCH_HS             0x80FFFF01
+
 /* Data structure definitions */
 struct mmc_boot_command
 {
@@ -396,6 +425,12 @@ struct mmc_boot_csd
     unsigned int nsac_clk_cycle;
     unsigned int taac_ns;
     unsigned int tran_speed;
+    unsigned int erase_grp_size;
+    unsigned int erase_grp_mult;
+    unsigned int wp_grp_size;
+    unsigned int wp_grp_enable:1;
+    unsigned int perm_wp:1;
+    unsigned int temp_wp:1;
     unsigned int erase_blk_len:1;
     unsigned int read_blk_misalign:1;
     unsigned int write_blk_misalign:1;
@@ -443,6 +478,8 @@ struct mmc_boot_card
 #define MMC_BOOT_TYPE_STD_SD             0
 #define MMC_BOOT_TYPE_SDHC               1
 #define MMC_BOOT_TYPE_SDIO               2
+#define MMC_BOOT_TYPE_MMCHC              3
+#define MMC_BOOT_TYPE_STD_MMC            4
     unsigned int status;
 #define MMC_BOOT_STATUS_INACTIVE         0
 #define MMC_BOOT_STATUS_ACTIVE           1
@@ -508,9 +545,22 @@ struct mmc_boot_host
 #define BINARY_IN_TABLE_SIZE      (16 * 512)
 #define MAX_FILE_ENTRIES          20
 
-#define MMC_BOOT_TYPE 0x48
-#define MMC_SYSTEM_TYPE 0x82
-#define MMC_USERDATA_TYPE 0x83
+#define MMC_MODEM_TYPE	 		0x06
+#define MMC_MODEM_TYPE2			0x0C
+#define MMC_SBL1_TYPE 			0x4D
+#define MMC_SBL2_TYPE 			0x51
+#define MMC_SBL3_TYPE 			0x45
+#define MMC_RPM_TYPE 			0x47
+#define MMC_TZ_TYPE 			0x46
+#define MMC_MODEM_ST1_TYPE 		0x4A
+#define MMC_MODEM_ST2_TYPE 		0x4B
+#define MMC_EFS2_TYPE 			0x4E
+
+#define MMC_ABOOT_TYPE 			0x4C
+#define MMC_BOOT_TYPE 			0x48
+#define MMC_SYSTEM_TYPE 		0x82
+#define MMC_USERDATA_TYPE 		0x83
+#define MMC_RECOVERY_TYPE 		0x60
 
 #define MMC_RCA 2
 

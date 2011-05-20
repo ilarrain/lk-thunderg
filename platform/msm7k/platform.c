@@ -34,7 +34,7 @@
 #include <debug.h>
 #include <kernel/thread.h>
 #include <platform/debug.h>
-#include <platform/mddi.h>
+#include <mddi.h>
 #include <dev/fbcon.h>
 
 static struct fbcon_config *fb_config;
@@ -52,7 +52,7 @@ void mddi_clock_init(unsigned num, unsigned rate);
 void platform_early_init(void)
 {
         //uart3_clock_init();
-	uart_init();
+	//uart_init();
 
 	platform_init_interrupts();
 	platform_init_timer();
@@ -68,7 +68,6 @@ void platform_init(void)
 void display_init(void)
 {
 #if DISPLAY_TYPE_MDDI
-	mddi_clock_init(0, 122880000);
 	fb_config = mddi_init();
 	ASSERT(fb_config);
 	fbcon_setup(fb_config);

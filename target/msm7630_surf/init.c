@@ -32,10 +32,13 @@
 
 #include <debug.h>
 #include <dev/keys.h>
+#include <dev/gpio.h>
 #include <dev/gpio_keypad.h>
 #include <lib/ptable.h>
 #include <dev/flash.h>
 #include <smem.h>
+#include <reg.h>
+#include <platform/iomap.h>
 
 #define LINUX_MACHTYPE_7x30_SURF          1007016
 #define LINUX_MACHTYPE_7x30_FFA           1007017
@@ -47,21 +50,13 @@
 
 #define MSM8255_ID                 74
 #define MSM8655_ID                 75
-
-//Enum values for 7x30 target platforms.
-enum platform
-{
-    HW_PLATFORM_UNKNOWN = 0,
-    HW_PLATFORM_SURF    = 1,
-    HW_PLATFORM_FFA     = 2,
-    HW_PLATFORM_FLUID   = 3,
-    HW_PLATFORM_SVLTE   = 4,
-    HW_PLATFORM_32BITS  = 0x7FFFFFFF
-};
+#define APQ8055_ID                 85
 
 #define VARIABLE_LENGTH        0x10101010
 #define DIFF_START_ADDR        0xF0F0F0F0
 #define NUM_PAGES_PER_BLOCK    0x40
+
+static unsigned mmc_sdc_base[] = { MSM_SDC1_BASE, MSM_SDC2_BASE, MSM_SDC3_BASE, MSM_SDC4_BASE};
 
 static struct ptable flash_ptable;
 static int hw_platform_type = -1;
@@ -82,13 +77,18 @@ static struct ptentry board_part_list[] = {
 	},
 	{
 		.start = DIFF_START_ADDR,
-		.length = 105 /* In MB */,
+		.length = 120 /* In MB */,
 		.name = "system",
 	},
 	{
 		.start = DIFF_START_ADDR,
-		.length = 5 /* In MB */,
+		.length = 30 /* In MB */,
 		.name = "cache",
+	},
+	{
+		.start = DIFF_START_ADDR,
+		.length = 1 /* In MB */,
+		.name = "misc",
 	},
 	{
 		.start = DIFF_START_ADDR,
@@ -110,6 +110,7 @@ static int num_parts = sizeof(board_part_list)/sizeof(struct ptentry);
 
 void smem_ptable_init(void);
 unsigned smem_get_apps_flash_start(void);
+unsigned smem_read_alloc_entry_offset(smem_mem_type_t, void *, int, int);
 
 void keypad_init(void);
 
@@ -117,6 +118,51 @@ static int emmc_boot = -1;  /* set to uninitialized */
 int target_is_emmc_boot(void);
 static int platform_version = -1;
 static int target_msm_id = -1;
+static int interleaved_mode_enabled = -1;
+void enable_interleave_mode(int);
+
+int target_is_interleaved_mode(void)
+{
+    struct smem_board_info_v4 board_info_v4;
+    unsigned int board_info_len = 0;
+    unsigned smem_status;
+    char *build_type;
+    unsigned format = 0;
+
+    if (interleaved_mode_enabled != -1)
+    {
+        return interleaved_mode_enabled;
+    }
+
+    smem_status = smem_read_alloc_entry_offset(SMEM_BOARD_INFO_LOCATION,
+					       &format, sizeof(format), 0);
+    if(!smem_status)
+    {
+	if ((format == 3) || (format == 4))
+	{
+	    if (format == 4)
+		board_info_len = sizeof(board_info_v4);
+	    else
+		board_info_len = sizeof(board_info_v4.board_info_v3);
+
+	    smem_status = smem_read_alloc_entry(SMEM_BOARD_INFO_LOCATION,
+					    &board_info_v4, board_info_len);
+	    if(!smem_status)
+	    {
+		build_type = (char *)(board_info_v4.board_info_v3.build_id) + 9;
+
+		interleaved_mode_enabled = 0;
+
+		if (*build_type == 'C')
+		{
+		    interleaved_mode_enabled = 1;
+		}
+	    }
+	}
+    }
+
+    return interleaved_mode_enabled;
+}
 
 void target_init(void)
 {
@@ -125,6 +171,8 @@ void target_init(void)
 	unsigned total_num_of_blocks;
 	unsigned next_ptr_start_adr = 0;
 	unsigned blocks_per_1MB = 8; /* Default value of 2k page size on 256MB flash drive*/
+	unsigned base_addr;
+	unsigned char slot;
 	int i;
 
 	dprintf(INFO, "target_init()\n");
@@ -135,7 +183,23 @@ void target_init(void)
 #endif
 
 	if (target_is_emmc_boot())
+	{
+		/* Trying Slot 2 first */
+		slot = 2;
+		base_addr = mmc_sdc_base[slot-1];
+		if(mmc_boot_main(slot, base_addr))
+		{
+			/* Trying Slot 4 next */
+			slot = 4;
+			base_addr = mmc_sdc_base[slot-1];
+			if(mmc_boot_main(slot, base_addr))
+			{
+				dprintf(CRITICAL, "mmc init failed!");
+				ASSERT(0);
+			}
+		}
 		return;
+	}
 
 	ptable_init(&flash_ptable);
 	smem_ptable_init();
@@ -143,14 +207,14 @@ void target_init(void)
 	flash_init();
 	flash_info = flash_get_info();
 	ASSERT(flash_info);
+	enable_interleave_mode(target_is_interleaved_mode());
 
 	offset = smem_get_apps_flash_start();
 	if (offset == 0xffffffff)
 	        while(1);
 
-	total_num_of_blocks = (flash_info->block_size)/NUM_PAGES_PER_BLOCK;
-	blocks_per_1MB = total_num_of_blocks /
-	         (((flash_info->block_size) * (flash_info->page_size)) >> 20);
+	total_num_of_blocks = flash_info->num_blocks;
+	blocks_per_1MB = (1 << 20) / (flash_info->block_size);
 
 	for (i = 0; i < num_parts; i++) {
 		struct ptentry *ptn = &board_part_list[i];
@@ -175,8 +239,14 @@ void target_init(void)
 			ASSERT(len >= 0);
 		}
 		next_ptr_start_adr = ptn->start + len;
-		ptable_add(&flash_ptable, ptn->name, offset + ptn->start,
-			   len, ptn->flags, TYPE_APPS_PARTITION, PERM_WRITEABLE);
+		if(target_is_interleaved_mode()) {
+		        ptable_add(&flash_ptable, ptn->name, offset + (ptn->start / 2),
+				   (len / 2), ptn->flags, TYPE_APPS_PARTITION, PERM_WRITEABLE);
+		}
+		else {
+		        ptable_add(&flash_ptable, ptn->name, offset + ptn->start,
+				   len, ptn->flags, TYPE_APPS_PARTITION, PERM_WRITEABLE);
+		}
 	}
 
 	smem_add_modem_partitions(&flash_ptable);
@@ -193,7 +263,8 @@ int target_platform_version(void)
 int target_is_msm8x55(void)
 {
     if ((target_msm_id == MSM8255_ID) ||
-	          (target_msm_id == MSM8655_ID))
+	          (target_msm_id == MSM8655_ID) ||
+	          (target_msm_id == APQ8055_ID))
         return 1;
     else
         return 0;
@@ -272,6 +343,34 @@ unsigned check_reboot_mode(void)
       return 0;
     }
     return mode[0];
+}
+
+static unsigned target_check_power_on_reason(void)
+{
+    unsigned power_on_status = 0;
+    unsigned int status_len = sizeof(power_on_status);
+    unsigned smem_status;
+
+    smem_status = smem_read_alloc_entry(SMEM_POWER_ON_STATUS_INFO,
+                                        &power_on_status, status_len);
+
+    if (!smem_status)
+    {
+        dprintf(CRITICAL, "ERROR: unable to read shared memory for power on reason\n");
+    }
+
+    return power_on_status;
+}
+
+unsigned target_pause_for_battery_charge(void)
+{
+    //check power on reason only for fluid devices
+    if( hw_platform_type != LINUX_MACHTYPE_7x30_FLUID)
+        return 0;
+
+    if (target_check_power_on_reason() == PWR_ON_EVENT_USB_CHG)
+        return 1;
+   return 0;
 }
 
 void target_battery_charging_enable(unsigned enable, unsigned disconnect)
