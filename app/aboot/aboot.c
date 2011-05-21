@@ -711,7 +711,7 @@ fastboot:
 	fastboot_publish("product", TARGET(BOARD));
 	fastboot_publish("kernel", "lk");
 
-	fastboot_init(target_get_scratch_address(), 120 * 1024 * 1024);
+	fastboot_init(target_get_scratch_address(), 200 * 1024 * 1024);
 	udc_start();
 	target_battery_charging_enable(1, 0);
 }
