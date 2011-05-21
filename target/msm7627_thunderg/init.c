@@ -226,7 +226,7 @@ static unsigned target_check_power_on_reason(void)
                                         &power_on_status, status_len);
     if (!smem_status)
     {
-        dprintf(CRITICAL, "ERROR: unable to read shared memory for power on rea
+        dprintf(CRITICAL, "ERROR: unable to read shared memory for power on reason\n");
     }
 
     return power_on_status;
